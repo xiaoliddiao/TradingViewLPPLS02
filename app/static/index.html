@@ -12,7 +12,7 @@
       .ok { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
       .error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
       #chart { height: calc(100vh - 140px); }
-      #controls { padding: 8px 16px; display:flex; gap: 12px; align-items:center; border-bottom: 1px solid #e5e5e5; }
+      #controls { padding: 8px 16px; display:flex; gap: 12px; align-items:center; border-bottom: 1px solid #e5e5e5; flex-wrap: wrap; }
       input, select, button { padding: 6px 8px; }
     </style>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
@@ -35,6 +35,18 @@
         </select>
         <button type="submit">Load</button>
       </form>
+      <div>
+        <label>LPPL Source:</label>
+        <select id="lppl-source">
+          <option>CoinGecko</option>
+          <option>Alpha Vantage</option>
+          <option>Stooq</option>
+          <option>CoinMarketCap</option>
+        </select>
+        <label>Start index (optional):</label>
+        <input id="lppl-start" type="number" min="0" style="width:100px" placeholder="auto"/>
+        <button id="btn-lppl" type="button">Fit LPPL</button>
+      </div>
       <div id="status"></div>
     </div>
     <div id="chart"></div>
@@ -44,7 +56,7 @@
       const form = document.getElementById('symbol-form');
       const tzSel = document.getElementById('timezone');
 
-      let chart, candleSeries, volumeSeries;
+      let chart, candleSeries, volumeSeries, lpplSeries, tcLine;
       function ensureChart() {
         if (chart) return chart;
         chart = LightweightCharts.createChart(chartEl, {
@@ -59,6 +71,7 @@
         window.addEventListener('resize', () => chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight }));
         candleSeries = chart.addCandlestickSeries();
         volumeSeries = chart.addHistogramSeries({ priceFormat: { type:'volume' }, priceScaleId: 'left', color:'#93c5fd' });
+        lpplSeries = chart.addLineSeries({ color: '#ef4444', lineWidth: 2 });
         return chart;
       }
 
@@ -90,6 +103,28 @@
       }
 
       form.addEventListener('submit', (e)=>{ e.preventDefault(); load(document.getElementById('symbol').value); });
+      document.getElementById('btn-lppl').addEventListener('click', async ()=>{
+        ensureChart();
+        const symbol = document.getElementById('symbol').value.trim();
+        const source = document.getElementById('lppl-source').value;
+        const start = document.getElementById('lppl-start').value;
+        const params = new URLSearchParams({ symbol, source });
+        if (start !== '') params.append('start_index', start);
+        const res = await fetch(`/api/lppl?${params.toString()}`, { method: 'POST' });
+        const payload = await res.json();
+        if (!res.ok){ alert(payload.detail || 'LPPL fit failed'); return; }
+        lpplSeries.setData(payload.fitted);
+        // Tc vertical line
+        if (tcLine) { chart.removeSeries(tcLine); tcLine = null; }
+        // emulate vertical line by a lineSeries with two points at Tc using chart price range
+        const ts = payload.tc;
+        const range = candleSeries.priceScale().getMode ? { minValue: 0, maxValue: 0 } : null;
+        const prices = payload.fitted.map(p => p.value);
+        const min = Math.min(...prices), max = Math.max(...prices);
+        tcLine = chart.addLineSeries({ color:'#111827', lineWidth:1, lineStyle: LightweightCharts.LineStyle.Dashed });
+        tcLine.setData([{ time: ts, value: min }, { time: ts, value: max }]);
+        chart.timeScale().fitContent();
+      });
       tzSel.addEventListener('change', ()=>{ if (chart) chart.applyOptions({ localization: { locale: navigator.language, timezone: tzSel.value } }); });
       load('BTC');
     </script>
