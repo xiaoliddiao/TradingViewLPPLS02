@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chart Test Page - Verify TradingView Works</title>
+    <style>
+      body { font-family: system-ui; margin: 20px; background: #f9fafb; }
+      .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      h1 { color: #1f2937; margin: 0 0 10px 0; }
+      .status { padding: 12px; border-radius: 6px; margin: 16px 0; }
+      .status.success { background: #d1fae5; color: #065f46; }
+      .status.error { background: #fee2e2; color: #991b1b; }
+      button { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 5px; }
+      button:hover { background: #2563eb; }
+      button.success { background: #10b981; }
+      button.success:hover { background: #059669; }
+      #chart { height: 500px; margin: 20px 0; border: 1px solid #e5e7eb; border-radius: 6px; }
+      .info { background: #eff6ff; padding: 12px; border-radius: 6px; margin: 16px 0; border-left: 4px solid #3b82f6; }
+      pre { background: #1f2937; color: #f9fafb; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+    </style>
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>📊 TradingView Lightweight Charts - Test Page</h1>
+      <p>This page tests if TradingView charts work correctly in your browser.</p>
+      
+      <div id="status" class="status">Ready to test...</div>
+      
+      <div>
+        <button class="success" onclick="testHardcodedData()">1. Test Hardcoded Data (10 candles)</button>
+        <button onclick="testBTCFile()">2. Load BTC from JSON</button>
+        <button onclick="testAAPLFile()">3. Load AAPL from JSON</button>
+        <button onclick="clearChart()">Clear Chart</button>
+      </div>
+      
+      <div class="info">
+        <strong>Test Steps:</strong><br>
+        1. Click "Test Hardcoded Data" - should show 10 green/red candles<br>
+        2. Click "Load BTC/AAPL" - should load real market data<br>
+        3. Check browser console (F12) for detailed logs
+      </div>
+      
+      <div id="chart"></div>
+      
+      <div id="console-log"></div>
+    </div>
+
+    <script>
+      const statusEl = document.getElementById('status');
+      const chartEl = document.getElementById('chart');
+      const consoleLogEl = document.getElementById('console-log');
+      
+      let chart = null;
+      let candleSeries = null;
+      let volumeSeries = null;
+
+      function log(msg, type = 'info') {
+        console.log(msg);
+        const pre = document.createElement('pre');
+        pre.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        consoleLogEl.appendChild(pre);
+      }
+
+      function createChart() {
+        if (chart) {
+          log('Chart already exists, reusing...');
+          return;
+        }
+        
+        try {
+          log('Creating chart...');
+          log('LightweightCharts version: ' + (LightweightCharts.version || 'unknown'));
+          
+          chart = LightweightCharts.createChart(chartEl, {
+            width: chartEl.clientWidth,
+            height: chartEl.clientHeight,
+            layout: { background: { color: '#ffffff' }, textColor: '#333' },
+            grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+            timeScale: { timeVisible: true, secondsVisible: false }
+          });
+          
+          candleSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a',
+            downColor: '#ef5350',
+            borderVisible: false,
+            wickUpColor: '#26a69a',
+            wickDownColor: '#ef5350'
+          });
+          
+          volumeSeries = chart.addHistogramSeries({
+            color: '#93c5fd',
+            priceFormat: { type: 'volume' },
+            priceScaleId: 'left'
+          });
+          
+          chart.priceScale('left').applyOptions({
+            scaleMargins: { top: 0.8, bottom: 0 }
+          });
+          
+          window.addEventListener('resize', () => {
+            chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+          });
+          
+          log('✅ Chart created successfully!');
+          statusEl.className = 'status success';
+          statusEl.textContent = '✅ Chart initialized successfully!';
+        } catch (err) {
+          log('❌ Error creating chart: ' + err.message, 'error');
+          statusEl.className = 'status error';
+          statusEl.textContent = '❌ Failed to create chart: ' + err.message;
+          throw err;
+        }
+      }
+
+      function testHardcodedData() {
+        try {
+          createChart();
+          log('Loading hardcoded test data (10 candles)...');
+          
+          const testData = [
+            {time:1728950400,open:66050,high:67881,low:64809,close:67041,volume:48863870879},
+            {time:1729036800,open:67042,high:68375,low:66758,close:67612,volume:49485756928},
+            {time:1729123200,open:67617,high:67912,low:66647,close:67399,volume:44758583296},
+            {time:1729209600,open:67400,high:68969,low:67129,close:68388,volume:47392847872},
+            {time:1729296000,open:68389,high:69432,low:67811,close:68227,volume:50485756928},
+            {time:1729382400,open:68228,high:68970,low:66739,close:67103,volume:51758583296},
+            {time:1729468800,open:67104,high:67899,low:65162,close:66683,volume:49392847872},
+            {time:1729555200,open:66685,high:67744,low:65821,close:67291,volume:46485756928},
+            {time:1729641600,open:67292,high:68512,low:66894,close:67858,volume:48758583296},
+            {time:1729728000,open:67859,high:69014,low:67123,close:68547,volume:52392847872}
+          ];
+          
+          const candles = testData.map(d => ({time:d.time, open:d.open, high:d.high, low:d.low, close:d.close}));
+          const volumes = testData.map(d => ({time:d.time, value:d.volume}));
+          
+          log('Setting ' + candles.length + ' candles...');
+          candleSeries.setData(candles);
+          volumeSeries.setData(volumes);
+          chart.timeScale().fitContent();
+          
+          log('✅ SUCCESS! Loaded ' + testData.length + ' candles');
+          statusEl.className = 'status success';
+          statusEl.textContent = '✅ Test passed! 10 candles displayed successfully.';
+        } catch (err) {
+          log('❌ Test failed: ' + err.message, 'error');
+          statusEl.className = 'status error';
+          statusEl.textContent = '❌ Test failed: ' + err.message;
+        }
+      }
+
+      async function testBTCFile() {
+        try {
+          createChart();
+          log('Loading BTC data from btc_test_data.json...');
+          statusEl.textContent = 'Loading BTC data...';
+          
+          const response = await fetch('/static/btc_test_data.json');
+          const payload = await response.json();
+          
+          log('Received data for symbol: ' + payload.symbol);
+          log('Available sources: ' + Object.keys(payload.data).join(', '));
+          
+          const yahooData = payload.data['Yahoo Finance'] || [];
+          log('Yahoo Finance data points: ' + yahooData.length);
+          
+          if (yahooData.length === 0) {
+            throw new Error('No Yahoo Finance data found');
+          }
+          
+          const candles = yahooData.map(d => ({time:d.time, open:d.open, high:d.high, low:d.low, close:d.close}));
+          const volumes = yahooData.map(d => ({time:d.time, value:d.volume}));
+          
+          candleSeries.setData(candles);
+          volumeSeries.setData(volumes);
+          chart.timeScale().fitContent();
+          
+          log('✅ SUCCESS! Loaded ' + yahooData.length + ' BTC candles from file');
+          statusEl.className = 'status success';
+          statusEl.textContent = '✅ BTC data loaded: ' + yahooData.length + ' candles from Yahoo Finance';
+        } catch (err) {
+          log('❌ Failed to load BTC: ' + err.message, 'error');
+          statusEl.className = 'status error';
+          statusEl.textContent = '❌ Failed to load BTC: ' + err.message;
+        }
+      }
+
+      async function testAAPLFile() {
+        try {
+          createChart();
+          log('Loading AAPL data from aapl_test_data.json...');
+          statusEl.textContent = 'Loading AAPL data...';
+          
+          const response = await fetch('/static/aapl_test_data.json');
+          const payload = await response.json();
+          
+          log('Received data for symbol: ' + payload.symbol);
+          
+          const yahooData = payload.data['Yahoo Finance'] || [];
+          log('Yahoo Finance data points: ' + yahooData.length);
+          
+          if (yahooData.length === 0) {
+            throw new Error('No Yahoo Finance data found');
+          }
+          
+          const candles = yahooData.map(d => ({time:d.time, open:d.open, high:d.high, low:d.low, close:d.close}));
+          const volumes = yahooData.map(d => ({time:d.time, value:d.volume}));
+          
+          candleSeries.setData(candles);
+          volumeSeries.setData(volumes);
+          chart.timeScale().fitContent();
+          
+          log('✅ SUCCESS! Loaded ' + yahooData.length + ' AAPL candles from file');
+          statusEl.className = 'status success';
+          statusEl.textContent = '✅ AAPL data loaded: ' + yahooData.length + ' candles from Yahoo Finance';
+        } catch (err) {
+          log('❌ Failed to load AAPL: ' + err.message, 'error');
+          statusEl.className = 'status error';
+          statusEl.textContent = '❌ Failed to load AAPL: ' + err.message;
+        }
+      }
+
+      function clearChart() {
+        if (candleSeries) candleSeries.setData([]);
+        if (volumeSeries) volumeSeries.setData([]);
+        log('Chart cleared');
+        statusEl.className = 'status';
+        statusEl.textContent = 'Chart cleared. Ready for next test.';
+      }
+
+      // Auto-test on load
+      log('=== Page loaded ===');
+      log('TradingView library loaded: ' + (typeof LightweightCharts !== 'undefined' ? 'YES' : 'NO'));
+    </script>
+  </body>
+</html>
+

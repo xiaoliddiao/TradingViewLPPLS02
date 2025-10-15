@@ -1,0 +1,343 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini TradingView</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0; }
+      header { padding: 12px 16px; border-bottom: 1px solid #e5e5e5; display:flex; gap:12px; align-items:center; }
+      #status { display:flex; gap: 12px; flex-wrap: wrap; }
+      .source { padding: 4px 8px; border-radius: 6px; border: 1px solid #ddd; }
+      .ok { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+      .error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+      #chart { height: calc(100vh - 140px); }
+      #controls { padding: 8px 16px; display:flex; gap: 12px; align-items:center; border-bottom: 1px solid #e5e5e5; }
+      input, select, button { padding: 6px 8px; }
+    </style>
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  </head>
+  <body>
+    <header>
+      <strong>Mini TradingView</strong>
+      <span style="opacity:.7">OHLCV Aggregator (Yahoo Finance, CoinGecko, Alpha Vantage, Stooq, CoinMarketCap)</span>
+    </header>
+    <div id="controls">
+      <form id="symbol-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label>Symbol:</label>
+        <input id="symbol" value="BTC" style="width:100px;" />
+        <button type="submit" style="background:#3b82f6;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:500;">Load</button>
+        <button type="button" id="test-btn" style="background:#10b981;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:500;">Test Data</button>
+        <span style="border-left:1px solid #ddd;height:24px;margin:0 8px;"></span>
+        <label style="font-weight:500;">Indicators:</label>
+        <button type="button" onclick="toggleMA(7, '#f59e0b')" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;cursor:pointer;font-size:12px;">MA7</button>
+        <button type="button" onclick="toggleMA(25, '#3b82f6')" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:4px;cursor:pointer;font-size:12px;">MA25</button>
+        <button type="button" onclick="toggleMA(99, '#8b5cf6')" style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;font-size:12px;">MA99</button>
+        <span style="border-left:1px solid #ddd;height:24px;margin:0 8px;"></span>
+        <label style="font-weight:500;">View:</label>
+        <button type="button" onclick="chart.timeScale().fitContent()" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px;" title="Fit content">📐 Fit</button>
+        <button type="button" onclick="chart.timeScale().scrollToRealTime()" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px;" title="Scroll to latest">⏭ Latest</button>
+        <button type="button" onclick="toggleFullscreen()" style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px;" title="Fullscreen">⛶ Full</button>
+      </form>
+    </div>
+    <div id="status" style="padding:8px 16px;display:flex;gap:8px;flex-wrap:wrap;"></div>
+    <div id="chart"></div>
+    <script>
+      const statusEl = document.getElementById('status');
+      const chartEl = document.getElementById('chart');
+      const form = document.getElementById('symbol-form');
+      const tzSel = document.getElementById('timezone');
+
+      let chart, candleSeries, volumeSeries, maSeries = [], currentData = [];
+      
+      function ensureChart() {
+        if (chart) return chart;
+        console.log('Creating chart with LightweightCharts version:', LightweightCharts.version || 'unknown');
+        chart = LightweightCharts.createChart(chartEl, {
+          width: chartEl.clientWidth,
+          height: chartEl.clientHeight,
+          layout: { 
+            background: { color:'#ffffff' }, 
+            textColor:'#191919' 
+          },
+          rightPriceScale: { 
+            borderColor: '#cccccc',
+            scaleMargins: { top: 0.1, bottom: 0.2 }
+          },
+          leftPriceScale: {
+            visible: true,
+            borderColor: '#cccccc'
+          },
+          timeScale: { 
+            borderColor: '#cccccc', 
+            timeVisible: true, 
+            secondsVisible: false,
+            rightOffset: 12,
+            barSpacing: 6,
+            fixLeftEdge: false,
+            lockVisibleTimeRangeOnResize: true,
+            rightBarStaysOnScroll: true,
+            borderVisible: true,
+            visible: true
+          },
+          grid: { 
+            horzLines: { color: '#f0f0f0', style: 1, visible: true }, 
+            vertLines: { color: '#f0f0f0', style: 1, visible: true } 
+          },
+          crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+            vertLine: {
+              color: '#758696',
+              width: 1,
+              style: 3,
+              labelBackgroundColor: '#4682B4'
+            },
+            horzLine: {
+              color: '#758696',
+              width: 1,
+              style: 3,
+              labelBackgroundColor: '#4682B4'
+            }
+          },
+          handleScroll: {
+            mouseWheel: true,
+            pressedMouseMove: true,
+            horzTouchDrag: true,
+            vertTouchDrag: true
+          },
+          handleScale: {
+            axisPressedMouseMove: true,
+            mouseWheel: true,
+            pinch: true
+          }
+        });
+        
+        window.addEventListener('resize', () => {
+          chart.applyOptions({ 
+            width: chartEl.clientWidth, 
+            height: chartEl.clientHeight 
+          });
+        });
+        
+        // Create candlestick series with better styling
+        candleSeries = chart.addCandlestickSeries({
+          upColor: '#26a69a',
+          downColor: '#ef5350',
+          borderVisible: false,
+          wickUpColor: '#26a69a',
+          wickDownColor: '#ef5350',
+          priceLineVisible: true,
+          lastValueVisible: true,
+          priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+        });
+        
+        // Create volume series on left scale
+        volumeSeries = chart.addHistogramSeries({
+          color: '#26a69a80',
+          priceFormat: { type: 'volume' },
+          priceScaleId: 'left',
+          lastValueVisible: false
+        });
+        
+        chart.priceScale('left').applyOptions({ 
+          scaleMargins: { top: 0.8, bottom: 0 },
+          borderVisible: true
+        });
+        
+        console.log('Chart created successfully');
+        return chart;
+      }
+      
+      // Calculate moving averages
+      function calculateMA(data, period) {
+        const ma = [];
+        for (let i = 0; i < data.length; i++) {
+          if (i < period - 1) continue;
+          let sum = 0;
+          for (let j = 0; j < period; j++) {
+            sum += data[i - j].close;
+          }
+          ma.push({ time: data[i].time, value: sum / period });
+        }
+        return ma;
+      }
+      
+      // Toggle MA lines
+      function toggleMA(period, color) {
+        const existing = maSeries.find(m => m.period === period);
+        if (existing) {
+          chart.removeSeries(existing.series);
+          maSeries = maSeries.filter(m => m.period !== period);
+        } else {
+          if (currentData.length === 0) return;
+          const maData = calculateMA(currentData, period);
+          const series = chart.addLineSeries({
+            color: color,
+            lineWidth: 2,
+            title: `MA${period}`,
+            lastValueVisible: false,
+            priceLineVisible: false
+          });
+          series.setData(maData);
+          maSeries.push({ period, series });
+        }
+      }
+
+      async function load(symbol){
+        try {
+          ensureChart();
+          statusEl.innerHTML = 'Loading...';
+          const res = await fetch(`/api/ohlcv?symbol=${encodeURIComponent(symbol)}`);
+          const payload = await res.json();
+          console.log('API Response:', payload);
+          const statuses = payload.status || {};
+          statusEl.innerHTML = '';
+          let picked = null;
+          for (const [name, st] of Object.entries(statuses)){
+            const ok = st === 'ok';
+            const badge = document.createElement('span');
+            badge.className = `source ${ok ? 'ok' : 'error'}`;
+            badge.textContent = `${name} ${ok ? '✓' : '✗'}`;
+            statusEl.appendChild(badge);
+            if (!picked && ok && payload.data[name] && payload.data[name].length){
+              picked = payload.data[name];
+              console.log(`Using ${name} data:`, picked.length, 'points');
+            }
+          }
+          if (picked){
+            currentData = picked; // Save for MA calculations
+            const candles = picked.map(p => ({ time: p.time, open: p.open, high: p.high, low: p.low, close: p.close }));
+            const volumes = picked.map(p => ({ time: p.time, value: p.volume || 0 }));
+            console.log('Setting candles:', candles.slice(0, 3));
+            candleSeries.setData(candles);
+            volumeSeries.setData(volumes);
+            chart.timeScale().fitContent();
+            console.log('Chart updated successfully with', candles.length, 'candles');
+            createTooltip(); // Enable crosshair tooltip
+          } else {
+            console.warn('No valid data found');
+            statusEl.innerHTML += '<span style="color:red;margin-left:12px">⚠ No data available</span>';
+          }
+        } catch (err) {
+          console.error('Load error:', err);
+          statusEl.innerHTML = `<span style="color:red">Error: ${err.message}</span>`;
+        }
+      }
+
+      // Fullscreen toggle
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          chartEl.requestFullscreen().catch(err => console.error('Fullscreen error:', err));
+        } else {
+          document.exitFullscreen();
+        }
+      }
+      
+      // Test with local hardcoded data
+      function testLocalData() {
+        try {
+          ensureChart();
+          statusEl.innerHTML = '<span class="source ok">Local Test Data ✓</span>';
+          
+          // Sample BTC data (last 30 days)
+          const testData = [
+            {time:1728950400,open:66050.37,high:67881.68,low:64809.20,close:67041.11,volume:28392847872},
+            {time:1729036800,open:67042.46,high:68375.29,low:66758.73,close:67612.72,volume:29485756928},
+            {time:1729123200,open:67617.08,high:67912.21,low:66647.39,close:67399.84,volume:24758583296},
+            {time:1729209600,open:67400.16,high:68969.70,low:67129.20,close:68388.70,volume:27392847872},
+            {time:1729296000,open:68389.87,high:69432.30,low:67811.02,close:68227.40,volume:30485756928},
+            {time:1729382400,open:68228.55,high:68970.41,low:66739.28,close:67103.17,volume:31758583296},
+            {time:1729468800,open:67104.28,high:67899.19,low:65162.37,close:66683.95,volume:29392847872},
+            {time:1729555200,open:66685.16,high:67744.81,low:65821.54,close:67291.38,volume:26485756928},
+            {time:1729641600,open:67292.49,high:68512.35,low:66894.72,close:67858.24,volume:28758583296},
+            {time:1729728000,open:67859.35,high:69014.26,low:67123.88,close:68547.91,volume:32392847872}
+          ];
+          
+          currentData = testData;
+          console.log('Loading test data:', testData.length, 'candles');
+          const candles = testData.map(p => ({time:p.time, open:p.open, high:p.high, low:p.low, close:p.close}));
+          const volumes = testData.map(p => ({time:p.time, value:p.volume}));
+          
+          candleSeries.setData(candles);
+          volumeSeries.setData(volumes);
+          chart.timeScale().fitContent();
+          createTooltip();
+          
+          console.log('✅ Local test data loaded successfully!');
+        } catch (err) {
+          console.error('❌ Test failed:', err);
+          statusEl.innerHTML = `<span style="color:red">Test Error: ${err.message}</span>`;
+        }
+      }
+      
+      // Crosshair tooltip
+      let tooltip = null;
+      function createTooltip() {
+        if (tooltip) return;
+        tooltip = document.createElement('div');
+        tooltip.style.cssText = 'position:absolute;display:none;padding:8px 12px;background:rgba(255,255,255,0.97);border:1px solid #ccc;border-radius:6px;font-size:12px;z-index:1000;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.15);font-family:monospace;';
+        chartEl.appendChild(tooltip);
+        
+        chart.subscribeCrosshairMove(param => {
+          if (!param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+            tooltip.style.display = 'none';
+            return;
+          }
+          
+          const data = param.seriesPrices.get(candleSeries);
+          if (!data) {
+            tooltip.style.display = 'none';
+            return;
+          }
+          
+          const dateStr = new Date(param.time * 1000).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+          const change = data.close - data.open;
+          const changePercent = ((change / data.open) * 100).toFixed(2);
+          const color = change >= 0 ? '#26a69a' : '#ef5350';
+          
+          tooltip.innerHTML = `
+            <div style="font-weight:600;margin-bottom:6px;color:#333;">${dateStr}</div>
+            <div style="display:grid;grid-template-columns:auto auto;gap:4px 12px;">
+              <span style="color:#666;">O:</span><span style="font-weight:500;">$${data.open.toFixed(2)}</span>
+              <span style="color:#666;">H:</span><span style="font-weight:500;">$${data.high.toFixed(2)}</span>
+              <span style="color:#666;">L:</span><span style="font-weight:500;">$${data.low.toFixed(2)}</span>
+              <span style="color:#666;">C:</span><span style="font-weight:500;">$${data.close.toFixed(2)}</span>
+            </div>
+            <div style="margin-top:6px;padding-top:6px;border-top:1px solid #eee;color:${color};font-weight:600;">
+              ${change >= 0 ? '+' : ''}$${change.toFixed(2)} (${change >= 0 ? '+' : ''}${changePercent}%)
+            </div>
+          `;
+          
+          const tooltipWidth = 180;
+          const tooltipHeight = 140;
+          let left = param.point.x + 15;
+          let top = param.point.y + 15;
+          
+          if (left + tooltipWidth > chartEl.clientWidth) {
+            left = param.point.x - tooltipWidth - 15;
+          }
+          if (top + tooltipHeight > chartEl.clientHeight) {
+            top = param.point.y - tooltipHeight - 15;
+          }
+          
+          tooltip.style.display = 'block';
+          tooltip.style.left = left + 'px';
+          tooltip.style.top = top + 'px';
+        });
+      }
+
+      form.addEventListener('submit', (e)=>{ e.preventDefault(); load(document.getElementById('symbol').value); });
+      document.getElementById('test-btn').addEventListener('click', testLocalData);
+      tzSel.addEventListener('change', ()=>{ 
+        if (chart) {
+          console.log('Changing timezone to:', tzSel.value);
+          chart.applyOptions({ timeScale: { timeVisible: true, secondsVisible: false } });
+        }
+      });
+      
+      // Auto-load BTC on page load
+      load('BTC');
+    </script>
+  </body>
+</html>
+
