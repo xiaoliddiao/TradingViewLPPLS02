@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OHLCV Aggregator</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>OHLCV Aggregator</h1>
+      <div class="controls">
+        <input id="symbolInput" placeholder="Enter symbol (e.g., BTC, AAPL)" />
+        <button id="loadBtn">Load</button>
+        <select id="timezoneSelect">
+          <option value="Etc/UTC">UTC</option>
+          <option value="America/New_York">New York</option>
+          <option value="Europe/London">London</option>
+          <option value="Asia/Shanghai">Shanghai</option>
+        </select>
+        <span class="hint">Default tests BTC across providers</span>
+      </div>
+
+      <div class="providers">
+        <div class="provider" data-name="alpha_vantage">
+          <span class="name">Alpha Vantage</span>
+          <span class="status" id="status-alpha_vantage">⏳</span>
+          <div class="chart" id="chart-alpha_vantage"></div>
+        </div>
+        <div class="provider" data-name="stooq">
+          <span class="name">Stooq</span>
+          <span class="status" id="status-stooq">⏳</span>
+          <div class="chart" id="chart-stooq"></div>
+        </div>
+        <div class="provider" data-name="coingecko">
+          <span class="name">CoinGecko</span>
+          <span class="status" id="status-coingecko">⏳</span>
+          <div class="chart" id="chart-coingecko"></div>
+        </div>
+        <div class="provider" data-name="coinmarketcap">
+          <span class="name">CoinMarketCap</span>
+          <span class="status" id="status-coinmarketcap">⏳</span>
+          <div class="chart" id="chart-coinmarketcap"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+  </html>
+
