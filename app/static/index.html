@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini TradingView</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0; }
+      header { padding: 12px 16px; border-bottom: 1px solid #e5e5e5; display:flex; gap:12px; align-items:center; }
+      #status { display:flex; gap: 12px; flex-wrap: wrap; }
+      .source { padding: 4px 8px; border-radius: 6px; border: 1px solid #ddd; }
+      .ok { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+      .error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+      #chart { height: calc(100vh - 140px); }
+      #controls { padding: 8px 16px; display:flex; gap: 12px; align-items:center; border-bottom: 1px solid #e5e5e5; }
+      input, select, button { padding: 6px 8px; }
+    </style>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  </head>
+  <body>
+    <header>
+      <strong>Mini TradingView</strong>
+      <span style="opacity:.7">OHLCV Aggregator (Alpha Vantage, Stooq, CoinGecko, CoinMarketCap)</span>
+    </header>
+    <div id="controls">
+      <form id="symbol-form">
+        <label>Symbol:</label>
+        <input id="symbol" value="BTC" />
+        <label>Timezone:</label>
+        <select id="timezone">
+          <option value="Etc/UTC">Etc/UTC</option>
+          <option value="America/New_York">America/New_York</option>
+          <option value="Europe/London">Europe/London</option>
+          <option value="Asia/Shanghai">Asia/Shanghai</option>
+        </select>
+        <button type="submit">Load</button>
+      </form>
+      <div id="status"></div>
+    </div>
+    <div id="chart"></div>
+    <script>
+      const statusEl = document.getElementById('status');
+      const chartEl = document.getElementById('chart');
+      const form = document.getElementById('symbol-form');
+      const tzSel = document.getElementById('timezone');
+
+      let chart, candleSeries, volumeSeries;
+      function ensureChart() {
+        if (chart) return chart;
+        chart = LightweightCharts.createChart(chartEl, {
+          width: chartEl.clientWidth,
+          height: chartEl.clientHeight,
+          layout: { background: { type:'solid', color:'#fff' }, textColor:'#222' },
+          rightPriceScale: { borderColor: '#d1d5db' },
+          timeScale: { borderColor: '#d1d5db', timeVisible: true },
+          grid: { horzLines: { color:'#f3f4f6' }, vertLines: { color:'#f3f4f6' } },
+          localization: { locale: navigator.language, timezone: tzSel.value }
+        });
+        window.addEventListener('resize', () => chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight }));
+        candleSeries = chart.addCandlestickSeries();
+        volumeSeries = chart.addHistogramSeries({ priceFormat: { type:'volume' }, priceScaleId: 'left', color:'#93c5fd' });
+        return chart;
+      }
+
+      async function load(symbol){
+        ensureChart();
+        statusEl.innerHTML = 'Loading...';
+        const res = await fetch(`/api/ohlcv?symbol=${encodeURIComponent(symbol)}`);
+        const payload = await res.json();
+        const statuses = payload.status || {};
+        statusEl.innerHTML = '';
+        let picked = null;
+        for (const [name, st] of Object.entries(statuses)){
+          const ok = st === 'ok';
+          const badge = document.createElement('span');
+          badge.className = `source ${ok ? 'ok' : 'error'}`;
+          badge.textContent = `${name} ${ok ? '✓' : '✗'}`;
+          statusEl.appendChild(badge);
+          if (!picked && ok && payload.data[name] && payload.data[name].length){
+            picked = payload.data[name];
+          }
+        }
+        if (picked){
+          const candles = picked.map(p => ({ time: p.time, open: p.open, high: p.high, low: p.low, close: p.close }));
+          const volumes = picked.map(p => ({ time: p.time, value: p.volume }));
+          candleSeries.setData(candles);
+          volumeSeries.setData(volumes);
+          chart.timeScale().fitContent();
+        }
+      }
+
+      form.addEventListener('submit', (e)=>{ e.preventDefault(); load(document.getElementById('symbol').value); });
+      tzSel.addEventListener('change', ()=>{ if (chart) chart.applyOptions({ localization: { locale: navigator.language, timezone: tzSel.value } }); });
+      load('BTC');
+    </script>
+  </body>
+</html>
