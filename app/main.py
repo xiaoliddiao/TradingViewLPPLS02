@@ -6,6 +6,7 @@ from .services import fetch_all_adapters
 from .adapters import ADAPTERS
 from dotenv import load_dotenv
 from .lppl import fit_lppl, LPPLParams
+from .datasets import list_dataset_files, read_dataset_candles_by_index, times_epoch_to_index_mapping
 
 load_dotenv()
 
@@ -84,4 +85,46 @@ async def post_lppl(
         "params": params.__dict__,
         "fitted": fitted,
         "tc": int(params.tc),
+    }
+
+
+@app.get("/api/datasets")
+def api_datasets():
+    files = list_dataset_files()
+    return {"count": len(files), "files": files}
+
+
+@app.get("/api/datasets/ohlcv")
+def api_dataset_ohlcv(index: int):
+    path, symbol, data = read_dataset_candles_by_index(index)
+    return {"index": index, "path": path, "symbol": symbol, "data": data}
+
+
+@app.post("/api/datasets/lppl")
+def api_dataset_lppl(index: int, start_index: int | None = None):
+    import numpy as np
+    path, symbol, data = read_dataset_candles_by_index(index)
+    if len(data) < 60:
+        raise HTTPException(status_code=400, detail="Not enough data")
+    times = [p["time"] for p in data]
+    closes = np.array([p["close"] for p in data], dtype=float)
+    # For lppls.cmaes we feed index-based times
+    t_idx, step = times_epoch_to_index_mapping(times)
+    from lppls.lppls_cmaes import LPPLSCMAES
+    import numpy as np
+    obs = np.vstack([t_idx, closes])
+    model = LPPLSCMAES(obs)
+    # conservative iteration settings
+    tc, m, w, a, b, c, c1, c2, O, D = model.fit(max_iteration=500, factor_sigma=0.1, pop_size=3)
+    # Build fitted curve in price domain along the same index grid
+    yhat = model.lppls(t_idx, tc, m, w, a, b, c1, c2)
+    fitted = [{"time": int(times[i]), "value": float(yhat[i])} for i in range(len(times))]
+    # Map tc from index units to epoch by linear extrapolation
+    tc_epoch = int(times[0] + tc * step)
+    return {
+        "index": index,
+        "symbol": symbol,
+        "tc": tc_epoch,
+        "params": {"tc": float(tc), "m": float(m), "w": float(w), "a": float(a), "b": float(b), "c": float(c), "c1": float(c1), "c2": float(c2)},
+        "fitted": fitted,
     }

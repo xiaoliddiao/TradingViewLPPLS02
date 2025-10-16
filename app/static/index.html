@@ -47,6 +47,12 @@
         <input id="lppl-start" type="number" min="0" style="width:100px" placeholder="auto"/>
         <button id="btn-lppl" type="button">Fit LPPL</button>
       </div>
+      <div style="display:flex; gap:8px; align-items:center">
+        <button id="btn-prev" type="button">⟵ Prev</button>
+        <span id="dataset-label" style="min-width:240px; display:inline-block"></span>
+        <button id="btn-next" type="button">Next ⟶</button>
+        <button id="btn-lppl-dataset" type="button">LPPL (CMA-ES)</button>
+      </div>
       <div id="status"></div>
     </div>
     <div id="chart"></div>
@@ -75,6 +81,8 @@
         return chart;
       }
 
+      let datasetFiles = [];
+      let datasetIndex = 0;
       async function load(symbol){
         ensureChart();
         statusEl.innerHTML = 'Loading...';
@@ -102,6 +110,56 @@
         }
       }
 
+      async function loadDatasets(){
+        const r = await fetch('/api/datasets');
+        const j = await r.json();
+        datasetFiles = j.files || [];
+        datasetIndex = 0;
+        updateDatasetLabel();
+      }
+
+      function updateDatasetLabel(){
+        const el = document.getElementById('dataset-label');
+        if (!datasetFiles.length) { el.textContent = 'No dataset found'; return; }
+        el.textContent = `${datasetIndex+1}/${datasetFiles.length}: ${datasetFiles[datasetIndex].split('/').pop()}`;
+      }
+
+      async function loadDatasetCandle(){
+        ensureChart();
+        if (!datasetFiles.length) return;
+        const r = await fetch(`/api/datasets/ohlcv?index=${datasetIndex}`);
+        const j = await r.json();
+        const candles = j.data.map(p => ({ time: p.time, open: p.open, high: p.high, low: p.low, close: p.close }));
+        const volumes = j.data.map(p => ({ time: p.time, value: p.volume }));
+        candleSeries.setData(candles);
+        volumeSeries.setData(volumes);
+        chart.timeScale().fitContent();
+        document.getElementById('symbol').value = j.symbol || '';
+        updateDatasetLabel();
+      }
+
+      async function fitDatasetLPPL(){
+        if (!datasetFiles.length) { alert('No dataset'); return; }
+        const r = await fetch(`/api/datasets/lppl?index=${datasetIndex}`, { method: 'POST' });
+        const j = await r.json();
+        if (r.ok){
+          lpplSeries.setData(j.fitted);
+          if (tcLine) { chart.removeSeries(tcLine); tcLine = null; }
+          const ts = j.tc;
+          const prices = j.fitted.map(p => p.value);
+          const min = Math.min(...prices), max = Math.max(...prices);
+          tcLine = chart.addLineSeries({ color:'#111827', lineWidth:1, lineStyle: LightweightCharts.LineStyle.Dashed });
+          tcLine.setData([{ time: ts, value: min }, { time: ts, value: max }]);
+          chart.timeScale().fitContent();
+        } else {
+          alert(j.detail || 'LPPL fit failed');
+        }
+      }
+
+      document.getElementById('btn-prev').addEventListener('click', async ()=>{ if (!datasetFiles.length) return; datasetIndex = (datasetIndex - 1 + datasetFiles.length) % datasetFiles.length; await loadDatasetCandle(); });
+      document.getElementById('btn-next').addEventListener('click', async ()=>{ if (!datasetFiles.length) return; datasetIndex = (datasetIndex + 1) % datasetFiles.length; await loadDatasetCandle(); });
+      document.getElementById('btn-lppl-dataset').addEventListener('click', fitDatasetLPPL);
+
       form.addEventListener('submit', (e)=>{ e.preventDefault(); load(document.getElementById('symbol').value); });
       document.getElementById('btn-lppl').addEventListener('click', async ()=>{
         ensureChart();
@@ -127,6 +185,7 @@
       });
       tzSel.addEventListener('change', ()=>{ if (chart) chart.applyOptions({ localization: { locale: navigator.language, timezone: tzSel.value } }); });
       load('BTC');
+      loadDatasets().then(()=>{ if (datasetFiles.length) loadDatasetCandle(); });
     </script>
   </body>
 </html>
