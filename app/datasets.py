@@ -16,6 +16,7 @@ DEFAULT_CANDIDATE_DIRS = [
     "/workspace/data/stooq_nasdaq stocksdata_H_day_72_fortest",
     "/workspace/data/stooq_nasdaq_stocksdata_H_day_72_fortest",
     "/workspace/stooq_nasdaq_stocksdata_H_day_72_fortest",
+    "/workspace/TradingViewLPPLS02/stooq_nasdaq stocksdata_H_day_72_fortest",
 ]
 
 
@@ -28,10 +29,12 @@ def _detect_dataset_dir() -> Optional[str]:
     for d in DEFAULT_CANDIDATE_DIRS:
         if os.path.isdir(d):
             return d
-    # 3. Heuristic search under /workspace for a dir containing 50+ .txt files
+    # 3. Heuristic search under /workspace for a dir containing 20+ .txt files
     for root, dirs, files in os.walk("/workspace"):
         txt_count = sum(1 for f in files if f.lower().endswith(".txt"))
-        if txt_count >= 50:
+        if txt_count >= 20 and os.path.basename(root).lower().startswith("stooq_nasdaq"):
+            return root
+        if txt_count >= 74:
             return root
     return None
 
